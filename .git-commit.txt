@@ -1,3 +1,13 @@
-chore(tqdm): ensure progress bar is enabled
+feat: add JSON->JSONL converter script
 
-- unsloth_sft/train_sft.py: explicitly set TrainingArguments.disable_tqdm=False and logging_strategy='steps' so the default tqdm bar (speed/progress/steps) is shown.
+- scripts/json_to_jsonl.py: Convert JSON arrays (or dicts with a single list of dicts) to JSONL.
+  - Options: --include-keys to keep only selected fields; --rename OLD=NEW to rename fields (repeatable).
+  - Useful for datasets like MetaMathQA (query/response) to produce a JSONL usable by the pretokenizer.
+
+Usage examples:
+- Keep original keys:
+  python scripts/json_to_jsonl.py --input datasets/metamathqa.json --output datasets/metamathqa.jsonl
+- Keep only query/response:
+  python scripts/json_to_jsonl.py --input datasets/metamathqa.json --output datasets/metamathqa.jsonl --include-keys query response
+- Rename to question/answer:
+  python scripts/json_to_jsonl.py --input datasets/metamathqa.json --output datasets/metamathqa.jsonl --rename query=question --rename response=answer

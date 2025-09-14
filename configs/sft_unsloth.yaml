@@ -22,6 +22,9 @@ data:
   val_jsonl_path: null                                # optional; if null, will split train by eval_split_ratio
   input_key: problem                                  # JSONL key for the input text
   target_key: answer                                  # JSONL key for the target text
+  convert_to_jsonl: false                              # if true, and train_jsonl_path points to a JSON file, convert to JSONL first
+  # convert_to_jsonl_include_keys: [query, response]   # optional: keep only these keys
+  # convert_to_jsonl_renames: {query: question, response: answer}  # optional field renames
   system_prompt: "You are a helpful assistant. Provide only the final answer."
   non_reasoning: true                                  # keep SFT concise per rStar recipe
   wrap_answer_in_tags: true                            # wrap with <answer> ... </answer>

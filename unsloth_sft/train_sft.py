@@ -17,8 +17,10 @@ Usage:
 
 from __future__ import annotations  # forward annotations
 
-import unsloth # must be the first import always
+import unsloth  # must be the first import always
 import os  # stdlib for env and paths
+import json
+from pathlib import Path
 from typing import Dict, Any  # typing hints
 
 import yaml  # read config yaml
@@ -102,6 +104,69 @@ def _as_float(val: Any, key_path: str) -> float:
                 f"Config {key_path} must be a number. Got '{val}'. Please set a decimal like 0.0002."
             )
     raise RuntimeError(f"Config {key_path} must be numeric. Got unsupported type: {type(val)}")
+
+
+def _maybe_convert_json_to_jsonl(cfg: Dict[str, Any]) -> None:
+    """If data.convert_to_jsonl is true and the training source file is a JSON
+    array/dict (not JSONL), convert it to JSONL and update train_jsonl_path.
+
+    Optional config:
+    - data.convert_to_jsonl_include_keys: list[str]
+    - data.convert_to_jsonl_renames: dict[str, str]
+    """
+    data_cfg = cfg.get("data", {})
+    if not bool(data_cfg.get("convert_to_jsonl", False)):
+        return
+    src_path = Path(data_cfg["train_jsonl_path"]).expanduser()
+    if not src_path.exists():
+        raise RuntimeError(f"Training data not found at {src_path}")
+    # Detect if whole file is a single JSON value (array/dict). If parsing fails, assume JSONL.
+    try:
+        with src_path.open("r", encoding="utf-8") as f:
+            parsed = json.load(f)
+    except Exception:
+        return  # treat as JSONL; nothing to do
+
+    # Extract list of dicts
+    if isinstance(parsed, list):
+        items = parsed
+    elif isinstance(parsed, dict):
+        # try common keys
+        for key in ("data", "items", "examples"):
+            if isinstance(parsed.get(key), list):
+                items = parsed[key]
+                break
+        else:
+            # first list-of-dicts value
+            lists = [v for v in parsed.values() if isinstance(v, list) and all(isinstance(x, dict) for x in v)]
+            if len(lists) == 1:
+                items = lists[0]
+            else:
+                raise RuntimeError("convert_to_jsonl: could not find a list of objects in the JSON file.")
+    else:
+        raise RuntimeError("convert_to_jsonl: unsupported JSON structure; expected array or dict.")
+
+    if not all(isinstance(x, dict) for x in items):
+        raise RuntimeError("convert_to_jsonl: expected list of objects (dicts).")
+
+    include = data_cfg.get("convert_to_jsonl_include_keys")
+    include_set = set(include) if include else None
+    renames: Dict[str, str] = data_cfg.get("convert_to_jsonl_renames", {}) or {}
+
+    out_path = src_path.with_suffix(".jsonl") if src_path.suffix.lower() == ".json" else src_path.with_name(src_path.name + ".jsonl")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", encoding="utf-8") as w:
+        for obj in items:
+            row = obj.copy()
+            if include_set is not None:
+                row = {k: row[k] for k in include_set if k in row}
+            for old, new in renames.items():
+                if old in row:
+                    row[new] = row.pop(old)
+            w.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+    # Update config to point to the JSONL we just wrote
+    cfg["data"]["train_jsonl_path"] = str(out_path)
 
 
 def _set_torch_env(cfg: Dict[str, Any]) -> None:
@@ -231,6 +296,9 @@ def main(config_path: str = "configs/sft_unsloth.yaml") -> None:
         hf_logging.set_verbosity_error()
     except Exception:
         pass
+
+    # Optional: convert JSON array to JSONL if requested
+    _maybe_convert_json_to_jsonl(cfg)
 
     # Load pretokenized datasets
     cache_dir = cfg["data"]["dataset_cache_dir"]  # path to cached dataset
