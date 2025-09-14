@@ -334,6 +334,8 @@ def main(config_path: str = "configs/sft_unsloth.yaml") -> None:
         "dataloader_num_workers": _as_int(tcfg.get("dataloader_num_workers", 0), "training.dataloader_num_workers"),
         "dataloader_drop_last": bool(tcfg.get("dataloader_drop_last", False)),
         "report_to": ["none"],
+        "disable_tqdm": False,
+        "logging_strategy": "steps",
     }
     # Handle eval/evaluation strategy compatibility
     eval_strategy = str(cfg["training"].get("evaluation_strategy", cfg["training"].get("eval_strategy", "no")))
