@@ -208,6 +208,12 @@ def _load_model_and_tokenizer(cfg: Dict[str, Any]):
                 max_memory = {0: f"{allow_gb}GiB"}  # Accelerate expects int device ids
         except Exception:
             max_memory = None
+        # Map gradient checkpointing config to Unsloth's argument
+        gc_cfg = model_cfg.get("gradient_checkpointing", True)
+        if isinstance(gc_cfg, str) and gc_cfg.lower() == "unsloth":
+            use_gc = "unsloth"
+        else:
+            use_gc = bool(gc_cfg)
         model, tokenizer = FastLanguageModel.from_pretrained(  # type: ignore
             model_name=name,  # model name or path
             max_seq_length=int(cfg["data"]["max_seq_len"]),  # max seq len
@@ -216,6 +222,7 @@ def _load_model_and_tokenizer(cfg: Dict[str, Any]):
             device_map=device_map,  # ensure no CPU/disk offload
             max_memory=max_memory,  # hint available memory to quantizer
             low_cpu_mem_usage=True,
+            use_gradient_checkpointing=use_gc,
         )
         # Apply LoRA/RSLoRA if requested
         if bool(model_cfg.get("qlora", True)):  # if QLoRA adapters requested
@@ -270,9 +277,21 @@ def _load_model_and_tokenizer(cfg: Dict[str, Any]):
         elif bool(model_cfg.get("qlora", True)) and not _HAS_PEFT:  # requested but missing peft
             raise RuntimeError("PEFT is not installed, but qlora=true. Install peft or set qlora=false.")  # error
 
-    # Gradient checkpointing as requested
-    if bool(model_cfg.get("gradient_checkpointing", True)):  # if enabled
-        model.gradient_checkpointing_enable()  # enable
+    # Gradient checkpointing as requested (HF path or non-Unsloth setting)
+    gc_cfg = model_cfg.get("gradient_checkpointing", True)
+    enable_gc = False
+    if isinstance(gc_cfg, str):
+        if gc_cfg.lower() == "unsloth":
+            enable_gc = False  # handled by Unsloth when _HAS_UNSLOTH path used
+        else:
+            enable_gc = gc_cfg.lower() in ("true", "1", "yes")
+    else:
+        enable_gc = bool(gc_cfg)
+    if enable_gc and not (_HAS_UNSLOTH and isinstance(gc_cfg, str) and gc_cfg.lower() == "unsloth"):
+        try:
+            model.gradient_checkpointing_enable()
+        except Exception:
+            pass
 
     return model, tokenizer  # return loaded model and tokenizer
 

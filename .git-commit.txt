@@ -1,13 +1,8 @@
-feat: add JSON->JSONL converter script
+feat(trainer): optional JSON→JSONL conversion before preprocessing
 
-- scripts/json_to_jsonl.py: Convert JSON arrays (or dicts with a single list of dicts) to JSONL.
-  - Options: --include-keys to keep only selected fields; --rename OLD=NEW to rename fields (repeatable).
-  - Useful for datasets like MetaMathQA (query/response) to produce a JSONL usable by the pretokenizer.
+- unsloth_sft/train_sft.py:
+  - Add data.convert_to_jsonl flag. When true, detect if the training file is a JSON array/dict; if so, convert to JSONL (one object per line) and update train_jsonl_path in-memory before pretokenization.
+  - Optional config knobs: data.convert_to_jsonl_include_keys (list) and data.convert_to_jsonl_renames (mapping from old->new).
+- configs/sft_unsloth.yaml: document the new flags (default false) with commented examples.
 
-Usage examples:
-- Keep original keys:
-  python scripts/json_to_jsonl.py --input datasets/metamathqa.json --output datasets/metamathqa.jsonl
-- Keep only query/response:
-  python scripts/json_to_jsonl.py --input datasets/metamathqa.json --output datasets/metamathqa.jsonl --include-keys query response
-- Rename to question/answer:
-  python scripts/json_to_jsonl.py --input datasets/metamathqa.json --output datasets/metamathqa.jsonl --rename query=question --rename response=answer
+This allows large JSON datasets like MetaMathQA to be consumed directly without manual preprocessing.
