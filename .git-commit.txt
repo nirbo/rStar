@@ -1,6 +1,3 @@
-chore: rich-colored step logs and decimal LR; ignore swap files
+feat(trainer): auto-resume from latest checkpoint if present
 
-- unsloth_sft/train_sft.py: add RichLogCallback to pretty-print training step logs with colorblind-friendly value colors (loss=cyan, grad_norm=green3, learning_rate=orange3, epoch=magenta). Format learning_rate as fixed decimal (non-scientific). Also switch Trainer to processing_class, set PYTORCH_CUDA_ALLOC_CONF, add optional num_train_epochs, and robust collator remains.
-- .gitignore: ignore editor swap files (*.swp, *.swo, *~), .DS_Store, and stray .install.sh.swp.
-
-This removes noisy warnings and improves readability of step logs while ensuring LR is printed as decimal.
+- unsloth_sft/train_sft.py: detect last checkpoint in output_dir via transformers.get_last_checkpoint and pass resume_from_checkpoint=path to Trainer.train(). Starts fresh if no checkpoints found.

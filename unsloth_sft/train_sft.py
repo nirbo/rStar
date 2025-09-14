@@ -41,6 +41,7 @@ from transformers import (
 )
 from transformers.trainer_utils import get_last_checkpoint
 from typing import Optional
+from transformers.utils import logging as hf_logging
 
 try:
     from rich.console import Console
@@ -208,8 +209,9 @@ class RichLogCallback(TrainerCallback):
                         val = f"{float(val):.4f}"
                     except Exception:
                         val = str(val)
-                parts.append(Text(f"{k}: "))
-                parts.append(Text(str(val), style=self.colors.get(k, "white")))
+                style = self.colors.get(k, "white")
+                parts.append(Text(f"{k}: ", style=style))
+                parts.append(Text(str(val), style=style))
                 parts.append(Text("  "))
         if parts:
             msg = Text().join(parts)
@@ -227,6 +229,11 @@ def main(config_path: str = "configs/sft_unsloth.yaml") -> None:
     _set_torch_env(cfg)  # configure torch backends
     # Reduce CUDA fragmentation for long runs
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+    # Silence HF Trainer default info logs to avoid duplicate dict prints
+    try:
+        hf_logging.set_verbosity_error()
+    except Exception:
+        pass
 
     # Load pretokenized datasets
     cache_dir = cfg["data"]["dataset_cache_dir"]  # path to cached dataset
