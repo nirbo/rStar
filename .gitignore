@@ -175,3 +175,4 @@ cache/
 *~
 .DS_Store
 .install.sh.swp
+.git-commit.txt

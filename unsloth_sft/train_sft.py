@@ -17,6 +17,7 @@ Usage:
 
 from __future__ import annotations  # forward annotations
 
+import unsloth # must be the first import always
 import os  # stdlib for env and paths
 from typing import Dict, Any  # typing hints
 
@@ -64,6 +65,49 @@ def _read_yaml(path: str) -> Dict[str, Any]:
             return yaml.safe_load(f)  # parse YAML
     except Exception as e:  # catch failures
         raise RuntimeError(f"Failed to read YAML config at {path}: {e}")  # report issue
+
+
+def _as_int(val: Any, key_path: str) -> int:
+    """Parse an integer from config with helpful errors.
+
+    Accepts int, numeric str (e.g., "8" or "8.0"), or float that is integral.
+    Raises with clear guidance on failure.
+    """
+    if isinstance(val, bool):
+        raise RuntimeError(f"Config {key_path} must be an integer, not boolean: {val}")
+    if isinstance(val, int):
+        return val
+    if isinstance(val, float):
+        if float(val).is_integer():
+            return int(val)
+        raise RuntimeError(f"Config {key_path} must be an integer, got non-integer float: {val}")
+    if isinstance(val, str):
+        s = val.strip()
+        try:
+            f = float(s)
+            if f.is_integer():
+                return int(f)
+        except Exception:
+            pass
+        raise RuntimeError(
+            f"Config {key_path} must be an integer. Got '{val}'. Please set an integer value (e.g., 6)."
+        )
+    raise RuntimeError(f"Config {key_path} must be an integer. Got unsupported type: {type(val)}")
+
+
+def _as_float(val: Any, key_path: str) -> float:
+    """Parse a float from config with helpful errors (accepts int/float/str)."""
+    if isinstance(val, (int, float)):
+        return float(val)
+    if isinstance(val, str):
+        s = val.strip()
+        try:
+            return float(s)
+        except Exception:
+            raise RuntimeError(
+                f"Config {key_path} must be a number. Got '{val}'. Please set a decimal like 0.0002."
+            )
+    raise RuntimeError(f"Config {key_path} must be numeric. Got unsupported type: {type(val)}")
 
 
 def _set_torch_env(cfg: Dict[str, Any]) -> None:
@@ -303,38 +347,39 @@ def main(config_path: str = "configs/sft_unsloth.yaml") -> None:
     collator = simple_lm_collator
 
     # Collect optional dataloader args with version checks
+    tcfg = cfg["training"]
     ta_kwargs = {
-        "output_dir": cfg["training"]["output_dir"],
-        "per_device_train_batch_size": int(cfg["training"]["per_device_train_batch_size"]),
-        "per_device_eval_batch_size": int(cfg["training"]["per_device_eval_batch_size"]),
-        "gradient_accumulation_steps": int(cfg["training"]["gradient_accumulation_steps"]),
-        "max_steps": int(cfg["training"]["max_steps"]),
-        "learning_rate": float(cfg["training"]["learning_rate"]),
-        "lr_scheduler_type": str(cfg["training"]["lr_scheduler_type"]),
-        "warmup_ratio": float(cfg["training"]["warmup_ratio"]),
-        "weight_decay": float(cfg["training"]["weight_decay"]),
-        "logging_steps": int(cfg["training"]["logging_steps"]),
+        "output_dir": tcfg["output_dir"],
+        "per_device_train_batch_size": _as_int(tcfg["per_device_train_batch_size"], "training.per_device_train_batch_size"),
+        "per_device_eval_batch_size": _as_int(tcfg["per_device_eval_batch_size"], "training.per_device_eval_batch_size"),
+        "gradient_accumulation_steps": _as_int(tcfg["gradient_accumulation_steps"], "training.gradient_accumulation_steps"),
+        "max_steps": _as_int(tcfg["max_steps"], "training.max_steps"),
+        "learning_rate": _as_float(tcfg["learning_rate"], "training.learning_rate"),
+        "lr_scheduler_type": str(tcfg["lr_scheduler_type"]),
+        "warmup_ratio": _as_float(tcfg["warmup_ratio"], "training.warmup_ratio"),
+        "weight_decay": _as_float(tcfg["weight_decay"], "training.weight_decay"),
+        "logging_steps": _as_int(tcfg["logging_steps"], "training.logging_steps"),
         # evaluation strategy key changed in some HF versions
         # set eval_strategy below based on config
-        "eval_steps": int(cfg["training"]["eval_steps"]),
-        "save_strategy": str(cfg["training"]["save_strategy"]),
-        "save_steps": int(cfg["training"]["save_steps"]),
-        "save_total_limit": int(cfg["training"]["save_total_limit"]),
-        "load_best_model_at_end": bool(cfg["training"]["load_best_model_at_end"]),
-        "metric_for_best_model": str(cfg["training"]["metric_for_best_model"]),
-        "greater_is_better": bool(cfg["training"]["greater_is_better"]),
-        "bf16": bool(cfg["training"].get("bf16", True)),
+        "eval_steps": _as_int(tcfg["eval_steps"], "training.eval_steps"),
+        "save_strategy": str(tcfg["save_strategy"]),
+        "save_steps": _as_int(tcfg["save_steps"], "training.save_steps"),
+        "save_total_limit": _as_int(tcfg["save_total_limit"], "training.save_total_limit"),
+        "load_best_model_at_end": bool(tcfg["load_best_model_at_end"]),
+        "metric_for_best_model": str(tcfg["metric_for_best_model"]),
+        "greater_is_better": bool(tcfg["greater_is_better"]),
+        "bf16": bool(tcfg.get("bf16", True)),
         "fp16": False,
-        "tf32": bool(cfg["training"].get("tf32", True)),
-        "seed": int(cfg["training"].get("seed", 42)),
-        "optim": str(cfg["training"].get("optim", "adamw_bnb_8bit")),
-        "adam_beta1": float(cfg["training"].get("adam_beta1", 0.9)),
-        "adam_beta2": float(cfg["training"].get("adam_beta2", 0.999)),
-        "adam_epsilon": float(cfg["training"].get("adam_epsilon", 1e-8)),
-        "max_grad_norm": float(cfg["training"].get("max_grad_norm", 1.0)),
-        "dataloader_pin_memory": bool(cfg["training"].get("dataloader_pin_memory", True)),
-        "dataloader_num_workers": int(cfg["training"].get("dataloader_num_workers", 0)),
-        "dataloader_drop_last": bool(cfg["training"].get("dataloader_drop_last", False)),
+        "tf32": bool(tcfg.get("tf32", True)),
+        "seed": _as_int(tcfg.get("seed", 42), "training.seed"),
+        "optim": str(tcfg.get("optim", "adamw_bnb_8bit")),
+        "adam_beta1": _as_float(tcfg.get("adam_beta1", 0.9), "training.adam_beta1"),
+        "adam_beta2": _as_float(tcfg.get("adam_beta2", 0.999), "training.adam_beta2"),
+        "adam_epsilon": _as_float(tcfg.get("adam_epsilon", 1e-8), "training.adam_epsilon"),
+        "max_grad_norm": _as_float(tcfg.get("max_grad_norm", 1.0), "training.max_grad_norm"),
+        "dataloader_pin_memory": bool(tcfg.get("dataloader_pin_memory", True)),
+        "dataloader_num_workers": _as_int(tcfg.get("dataloader_num_workers", 0), "training.dataloader_num_workers"),
+        "dataloader_drop_last": bool(tcfg.get("dataloader_drop_last", False)),
         "report_to": ["none"],
     }
     # Handle eval/evaluation strategy compatibility
@@ -343,11 +388,11 @@ def main(config_path: str = "configs/sft_unsloth.yaml") -> None:
     ta_kwargs["eval_strategy"] = eval_strategy
     # Optional fields if supported by current transformers
     if hasattr(TrainingArguments, "dataloader_prefetch_factor"):
-        ta_kwargs["dataloader_prefetch_factor"] = int(cfg["training"].get("dataloader_prefetch_factor", 2))
+        ta_kwargs["dataloader_prefetch_factor"] = _as_int(tcfg.get("dataloader_prefetch_factor", 2), "training.dataloader_prefetch_factor")
     if hasattr(TrainingArguments, "dataloader_persistent_workers"):
-        ta_kwargs["dataloader_persistent_workers"] = bool(cfg["training"].get("dataloader_persistent_workers", True))
-    if "warmup_steps" in cfg["training"]:
-        ta_kwargs["warmup_steps"] = int(cfg["training"].get("warmup_steps", 0))
+        ta_kwargs["dataloader_persistent_workers"] = bool(tcfg.get("dataloader_persistent_workers", True))
+    if "warmup_steps" in tcfg:
+        ta_kwargs["warmup_steps"] = _as_int(tcfg.get("warmup_steps", 0), "training.warmup_steps")
 
     # Optional: respect num_train_epochs if provided
     if "num_train_epochs" in cfg["training"]:

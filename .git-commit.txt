@@ -1,3 +1,6 @@
-feat(trainer): auto-resume from latest checkpoint if present
+chore(logging): suppress default Trainer prints; color keys same as values
 
-- unsloth_sft/train_sft.py: detect last checkpoint in output_dir via transformers.get_last_checkpoint and pass resume_from_checkpoint=path to Trainer.train(). Starts fresh if no checkpoints found.
+- unsloth_sft/train_sft.py:
+  - Use transformers.utils.logging.set_verbosity_error() to silence default info dict logs (avoid dual prints).
+  - In RichLogCallback, color the metric names the same as their values.
+  - Fix minor formatting.
