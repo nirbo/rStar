@@ -1,6 +1,5 @@
-chore(logging): suppress default Trainer prints; color keys same as values
+fix(config-parse): robust numeric parsing with helpful errors
 
-- unsloth_sft/train_sft.py:
-  - Use transformers.utils.logging.set_verbosity_error() to silence default info dict logs (avoid dual prints).
-  - In RichLogCallback, color the metric names the same as their values.
-  - Fix minor formatting.
+- unsloth_sft/train_sft.py: add _as_int/_as_float helpers and use them for all numeric TrainingArguments fields (batch sizes, grad_accum, steps, logging/eval/save cadence, dataloader workers, seed, optimizer params). This produces clear, actionable errors like:
+  "Config training.gradient_accumulation_steps must be an integer. Got '6i'."
+- Prevents cryptic ValueError and guides fixing configs/sft_unsloth.yaml.
