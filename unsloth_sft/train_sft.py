@@ -39,6 +39,7 @@ from transformers import (
     AutoModelForCausalLM,  # fallback model loader
     TrainerCallback,
 )
+from transformers.trainer_utils import get_last_checkpoint
 from typing import Optional
 
 try:
@@ -359,8 +360,16 @@ def main(config_path: str = "configs/sft_unsloth.yaml") -> None:
         callbacks=[RichLogCallback()] if _HAS_RICH else None,
     )
 
+    # Auto-resume from latest checkpoint if available
+    last_ckpt = None
+    try:
+        last_ckpt = get_last_checkpoint(train_args.output_dir)
+    except Exception:
+        last_ckpt = None
+    if last_ckpt:
+        print(f"Resuming from checkpoint: {last_ckpt}")
     # Train
-    trainer.train()  # run training
+    trainer.train(resume_from_checkpoint=last_ckpt)  # run training
 
     # Save final adapter checkpoint (best model is already loaded if configured)
     trainer.save_model(cfg["training"]["output_dir"])  # persist model
