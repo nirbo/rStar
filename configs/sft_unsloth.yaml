@@ -1,0 +1,81 @@
+# Unsloth SFT configuration for Gemma 3, single-GPU, 32GB-friendly
+
+model:
+  model_name_or_path: models/gemma-3-12b-it
+  dtype: bfloat16                                     # bf16 preferred on 5xxx/H100/B200
+  load_in_4bit: true                                  # QLoRA default
+  bnb_4bit_quant_type: nf4                            # Unsloth/BNB optimal
+  bnb_4bit_use_double_quant: true
+  bnb_4bit_compute_dtype: bfloat16
+  gradient_checkpointing: true
+  flash_attention_2: true
+  qlora: true                                         # enable LoRA adapters
+  rslora: false                                       # set true to try RSLoRA if supported
+  lora_r: 64
+  lora_alpha: 16
+  lora_dropout: 0.00
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+  device_map: auto
+
+data:
+  train_jsonl_path: datasets/MATH-500/test.jsonl      # your dataset path (JSONL)
+  val_jsonl_path: null                                # optional; if null, will split train by eval_split_ratio
+  input_key: problem                                  # JSONL key for the input text
+  target_key: answer                                  # JSONL key for the target text
+  system_prompt: "You are a helpful assistant. Provide only the final answer."
+  non_reasoning: true                                  # keep SFT concise per rStar recipe
+  wrap_answer_in_tags: true                            # wrap with <answer> ... </answer>
+  max_seq_len: 2048                                    # you will tune this; filtering uses this
+  eval_split_ratio: 0.025                              # fraction of train for eval when val path is null
+  pretokenize: true                                    # run pretokenization and save to disk
+  dataset_cache_dir: cache/MATH-500                   # on-disk cache location
+  num_proc: 30                                         # CPU workers for preprocessing
+  remove_long_samples: true                            # drop samples exceeding max_seq_len (no truncation)
+
+training:
+  output_dir: outputs/sft_gemma3_12b_it
+  per_device_train_batch_size: 6
+  per_device_eval_batch_size: 6
+  gradient_accumulation_steps: 8
+  max_steps: 5000
+  learning_rate: 0.0002
+  lr_scheduler_type: cosine
+  warmup_steps: 250
+  warmup_ratio: 0.025
+  weight_decay: 0.0
+  logging_steps: 1
+  evaluation_strategy: steps
+  eval_steps: 50
+  save_strategy: steps
+  save_steps: 50
+  save_total_limit: 3                                  # keep last N checkpoints
+  load_best_model_at_end: true
+  metric_for_best_model: eval_loss                     # use lowest eval_loss as best
+  greater_is_better: false
+  seed: 42
+  bf16: true
+  tf32: true
+  # Dataloader settings
+  dataloader_num_workers: 8
+  dataloader_pin_memory: true
+  dataloader_drop_last: false
+  dataloader_prefetch_factor: 4                        # optional; used if supported by transformers version
+  dataloader_persistent_workers: true                  # optional; used if supported by transformers version
+  # Optimizer settings
+  optim: adamw_bnb_8bit                                # good default for QLoRA (requires bitsandbytes)
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  adam_epsilon: 1.0e-8
+  max_grad_norm: 1.0
+
+runtime:
+  torch_compile: false
+  local_rank_env: LOCAL_RANK                           # injected by launcher if using torchrun
+
+env:
+  # Optional: Configure an OpenAI-compatible LLM-as-a-judge endpoint (used by RL grading components)
+  # These will be exported into the process environment before preprocessing/training.
+  # Do NOT commit real API keys to source control.
+  # LLM_AS_A_JUDGE_BASE: https://openrouter.ai/api/v1
+  # LLM_AS_A_JUDGE_API_KEY: ""
+  # LLM_AS_A_JUDGE_MODEL: nvidia/nemotron-nano-9b-v2:free

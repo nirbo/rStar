@@ -163,3 +163,9 @@ cython_debug/
 
 outputs/
 wandb/
+.env*
+datasets/
+models/
+outputs/
+unsloth_compiled_cache/
+cache/

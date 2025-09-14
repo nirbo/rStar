@@ -1,0 +1,109 @@
+Task Description:
+- Read README.md and the cited ArXiv paper at its bottom.
+- Goal: Utilize rStar to train a reasoning model based on Gemma 3 12B (instruction-tuned) using Unsloth with full VRAM/performance optimizations. Include features: checkpoint save every N steps, limit N saved checkpoints, save best model, eval every N steps, multi-worker dataset pretokenization + caching (configurable CPU cores), exclude samples > max_seq_len during preprocessing to avoid truncation.
+
+Plan:
+1) Read README.md header and extract cited paper reference
+2) Locate/download the cited ArXiv paper
+3) Skim and summarize rStar method requirements and training recipe
+4) Draft clarifying questions for dataset, objective, infrastructure
+5) Propose implementation plan integrating Unsloth with rStar for Gemma-3-12B-IT
+6) Implement trainer with requested features (checkpoints, eval, caching, pretokenization, sample filtering)
+7) Validate minimal/surgical changes to repo; add configs/scripts as needed
+8) Dry-run validation on small shard; measure VRAM fit for RTX 5090 32GB
+9) Document usage and update state
+
+Progress Tracker:
+- Completed: Initialize statefile; Read README.md; Locate+download paper 2508.20722; Summarize rStar method; Draft questions
+ - Completed: Implement Unsloth SFT pipeline + services scripts
+ - In Progress: Write TRAINING.md guide
+ - Pending: Propose RL phase design; Validate; Document
+
+Tool Call Log:
+- 2025-09-14T10:44Z arxiv__download_paper {paper_id: 2508.20722} -> converting
+- 2025-09-14T10:44Z arxiv__download_paper {check_status: true, paper_id: 2508.20722} -> success
+- 2025-09-14T10:44Z arxiv__read_paper {paper_id: 2508.20722} -> success (markdown loaded)
+- 2025-09-14T10:44Z rg README.md for arXiv ref -> found 2508.20722
+
+Context & Decisions:
+- Language/Env preference noted: Go 1.25.0 in broader project, but rStar repo likely Python-centric for training. Will avoid unrelated changes and keep additions modular (scripts/configs). No HTTP API edits expected yet.
+ - User approved SFT-first; acceptable to combine Unsloth with rStar infra later; domains starting with GSM8K then coding; max_seq_len exposed in YAML; target SFT+RL eventually; provide a single script to start rStar services via Docker Compose; best metric = lowest eval_loss; eval split configurable; JSONL format; QLoRA primary with optional RSLoRA; single-GPU only.
+
+Integrity & Backups:
+- A backup llm.state.bak will be created periodically after major milestones.
+
+Open Questions (to be refined after reading materials):
+- Dataset(s) selection and format? Desired max_seq_len and training objective specifics?
+- Target output format (CoT traces, tool-use traces, or pure text)?
+- Training schedule and eval metrics?
+
+Summary of rStar2-Agent (from README + paper 2508.20722):
+- Method: Agentic RL with Python tool-use in a secure Code Judge environment; multi-turn rollouts; prompt with <reason>/<answer> and function-call format for tools.
+- Algorithm: GRPO-RoC (Group Relative Policy Optimization + Resample-on-Correct). Oversample rollouts, downsample negatives uniformly, filter positives by tool-error ratio and format violations to prefer higher quality successes. Answer-only rewards to avoid reward hacking. Clip-Higher (epsilon_high=0.28), no KL, no entropy bonus.
+- Infra: VERL-based RL with SGLang/VLLM for inference; isolated high-throughput code execution service via Redis + async workers; dynamic load-balanced rollout scheduler.
+- Recipe: Non-reasoning SFT (instruction following + tool format) then 3 RL stages with max response lengths 8K→12K→12K and difficulty filtering in stage 3. Batch ~512 prompts; oversample 32, select 16 via RoC; T turns 10/10/15; LR 1e-6 AdamW.
+- Results: 14B model reaches 80.6% AIME24, 69.8% AIME25 in 510 RL steps; shorter responses vs baselines. Lessons: keep truncated rollouts as negative; avoid overly complex intermediate penalties.
+
+Implications for Gemma-3-12B-IT + Unsloth:
+
+Clarifying Questions for User Approval:
+Answered by user:
+- SFT-first now; later full-fledged tool-caller coder.
+- Combine Unsloth with rStar infra acceptable; 32GB constraint acknowledged; can drop to 7B if needed.
+- Start with GSM8K (math), later coding; split eval from train.
+- Expose max_seq_len and all knobs via YAML.
+- Prefer SFT + RL overall.
+- Provide single script to start services; assume Docker & Compose.
+- Best metric: lowest eval_loss.
+- Eval split ratio configurable in YAML.
+- JSONL inputs with keys configurable.
+- QLoRA primary; allow RSLoRA switch if compatible.
+- Single-GPU only.
+- 2025-09-14T10:55Z apply_patch add configs/sft_unsloth.yaml -> success
+- 2025-09-14T10:56Z apply_patch add unsloth_sft/preprocess.py -> success
+- 2025-09-14T10:58Z apply_patch add unsloth_sft/train_sft.py -> success
+- 2025-09-14T11:00Z apply_patch add scripts/start_rstar_services.sh -> success
+- 2025-09-14T11:01Z apply_patch add docker-compose.rstar.yml -> success
+- 2025-09-14T11:15Z apply_patch add TRAINING.md -> success
+- 2025-09-14T11:28Z apply_patch update examples/chat_with_tool_call.py (add --base_url, --api_key, --remote_model) -> success
+- 2025-09-14T11:29Z apply_patch update TRAINING.md (Judge Setup Examples + flags) -> success
+- 2025-09-14T11:36Z apply_patch update examples/chat_with_tool_call.py (add --judge_host/--judge_port; pass to judge client) -> success
+- 2025-09-14T11:38Z apply_patch update TRAINING.md (OpenRouter example for nvidia/nemotron-nano-9b-v2:free) -> success
+- 2025-09-14T11:52Z apply_patch update configs/sft_unsloth.yaml (add env section for LLM_AS_A_JUDGE_*) -> success
+- 2025-09-14T11:53Z apply_patch update unsloth_sft/preprocess.py (export env from YAML) -> success
+- 2025-09-14T11:54Z apply_patch update unsloth_sft/train_sft.py (export env from YAML) -> success
+- 2025-09-14T11:55Z apply_patch update TRAINING.md (document YAML env usage) -> success
+- 2025-09-14T12:02Z apply_patch update configs/sft_unsloth.yaml (add dataloader settings) -> success
+- 2025-09-14T12:03Z apply_patch update unsloth_sft/train_sft.py (wire dataloader settings with version checks) -> success
+- 2025-09-14T12:04Z apply_patch update TRAINING.md (document dataloader keys) -> success
+- 2025-09-14T12:15Z apply_patch update configs/sft_unsloth.yaml (add optimizer settings) -> success
+- 2025-09-14T12:16Z apply_patch update unsloth_sft/train_sft.py (pass optim, betas, epsilon, max_grad_norm, warmup_steps) -> success
+- 2025-09-14T12:17Z apply_patch update TRAINING.md (document optimizer keys) -> success
+- 2025-09-14T12:24Z apply_patch update scripts/start_rstar_services.sh (env validation + fail fast) -> success
+- 2025-09-14T12:25Z apply_patch update TRAINING.md (.env.rstar checklist and explanation) -> success
+- 2025-09-14T12:34Z apply_patch update docker-compose.rstar.yml (use gpus: all; add NVIDIA_* env) -> success
+- 2025-09-14T12:35Z apply_patch update TRAINING.md (GPU troubleshooting + toolkit test) -> success
+- 2025-09-14T12:42Z apply_patch add scripts/gpu_sanity.sh -> success
+- 2025-09-14T12:43Z apply_patch update TRAINING.md (add Quick Sanity Script section) -> success
+- 2025-09-14T12:44Z shell: check driver+ldconfig; found CUDA stub in /usr/local/cuda for libnvidia-ml.so.1
+- 2025-09-14T12:46Z shell: symlink /usr/local/cuda/.../libnvidia-ml.so -> driver lib; fixed .so.1 to point to .so; purge libnvidia-ml-dev
+- 2025-09-14T12:47Z shell: docker run --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi -> OK
+- 2025-09-14T12:49Z apply_patch update docker-compose.rstar.yml (vLLM command to pass args only) -> success
+- 2025-09-14T12:50Z shell: compose up vllm; logs show API server initializing and model loading; endpoint will become ready after compile
+- 2025-09-14T12:58Z apply_patch update unsloth_sft/train_sft.py (auto-run pretokenizer when pretokenize=true and cache missing) -> success
+- 2025-09-14T12:59Z apply_patch update TRAINING.md (document auto-pretokenization behavior) -> success
+
+- Unsloth excels at memory-efficient SFT/LoRA and some preference/GRPO variants in TRL-style loops, but does not natively provide multi-turn agentic RL with external tool environments at the scale of VERL. For RTX 5090 32GB, full agentic RL rollout with tool server will need aggressive downsizing (smaller group sizes, shorter lengths, fewer turns, 4-bit QLoRA, LoRA adapters, low micro-batches).
+- A pragmatic approach is: (1) Perform the non-reasoning SFT using Unsloth with full VRAM optimizations; (2) If RL is desired, implement a pared-down GRPO-RoC loop leveraging Unsloth/TRL components for policy + reference models, and integrate tool calls via a lightweight local code runner or the provided Code Judge but at reduced concurrency. Expose checkpoints/eval/caching features as requested.
+
+Q&A Log:
+- 2025-09-14T11:06Z user: "model_name_or_path - can this also take a local path?"
+  answer: Yes. Set `model.model_name_or_path` to an absolute or relative local directory containing HF Transformers-format weights and tokenizer (e.g., `/home/nir/models/gemma-3-12b-it`). Both AutoTokenizer and Unsloth FastLanguageModel accept local directories. For dockerized vLLM, ensure the same path is volume-mounted in docker-compose (`MODEL_PATH`) so the container can read it.
+- 2025-09-14T11:20Z user: "how is the judge going to be running exactly? locally? can i configure it to use any base_url / api_key / model_name?"
+  answer: By default, Code Judge runs locally via Docker Compose (`docker-compose.rstar.yml`) at `http://localhost:8088`, and the helper uses `localhost:8088` (see `rstar2_agent/tools/code_judge_utils.py:run_tool_calls_on_server_async`). You can point it to a remote judge by passing `host_addr`/`host_port` when calling that function or by adding env/config plumbing. For the LLM, the example client `examples/chat_with_tool_call.py` posts to `http://localhost:8000/v1/completions` and sets `payload["model"]` to the model; to use remote/self-hosted providers, change the `url` to your `base_url`, add an `Authorization: Bearer <api_key>` header if required, and set `payload["model"]` to the remote model name. Many providers expose an OpenAI-compatible API; ensure the endpoint matches the used API (completions vs chat/completions).
+- 2025-09-14T11:45Z user: "where do i configure openrouter url/api key/model for judge? and MATH-500 keys?"
+  answer: Code Judge does not call the LLM and therefore does not need OpenRouter config. It only executes model-generated code at `http://<judge_host>:<judge_port>`. Configure OpenRouter in the LLM client (e.g., `examples/chat_with_tool_call.py`) via flags `--base_url https://openrouter.ai/api/v1/chat/completions --api_key $OPENROUTER_API_KEY --remote_model "nvidia/nemotron-nano-9b-v2:free"`, optionally `--api_kind chat` if supported. For MATH-500 JSONL, set `data.input_key: problem` and `data.target_key: answer` in `configs/sft_unsloth.yaml`.
+- 2025-09-14T12:10Z user: "can learning_rate be set as decimal value and not scientific notation?"
+  answer: Yes. YAML and Transformers accept either scientific (e.g., `2.0e-4`) or fixed-decimal (e.g., `0.0002`) forms. Both parse as float and work the same in `TrainingArguments`. If you prefer readability, set `training.learning_rate: 0.0002`.
+- 2025-09-14T12:55Z apply_patch update scripts/gpu_sanity.sh (detect CUDA stub path) -> success
+- 2025-09-14T12:56Z apply_patch update TRAINING.md (NVML stub remediation steps) -> success

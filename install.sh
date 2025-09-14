@@ -5,7 +5,7 @@ git submodule init
 git submodule update
 
 # install verl
-pip install "torch<2.8"
+pip install "torch"
 pip install -r verl/requirements_sglang.txt
 pip install -e verl
 

@@ -1,0 +1,68 @@
+Task Description:
+- Read README.md and the cited ArXiv paper at its bottom.
+- Goal: Utilize rStar to train a reasoning model based on Gemma 3 12B (instruction-tuned) using Unsloth with full VRAM/performance optimizations. Include features: checkpoint save every N steps, limit N saved checkpoints, save best model, eval every N steps, multi-worker dataset pretokenization + caching (configurable CPU cores), exclude samples > max_seq_len during preprocessing to avoid truncation.
+
+Plan:
+1) Read README.md header and extract cited paper reference
+2) Locate/download the cited ArXiv paper
+3) Skim and summarize rStar method requirements and training recipe
+4) Draft clarifying questions for dataset, objective, infrastructure
+5) Propose implementation plan integrating Unsloth with rStar for Gemma-3-12B-IT
+6) Implement trainer with requested features (checkpoints, eval, caching, pretokenization, sample filtering)
+7) Validate minimal/surgical changes to repo; add configs/scripts as needed
+8) Dry-run validation on small shard; measure VRAM fit for RTX 5090 32GB
+9) Document usage and update state
+
+Progress Tracker:
+- Completed: Initialize statefile; Read README.md; Locate+download paper 2508.20722; Summarize rStar method; Draft questions
+- In Progress: Implement Unsloth SFT pipeline + services scripts
+- Pending: Propose RL phase design; Validate; Document
+
+Tool Call Log:
+- 2025-09-14T10:44Z arxiv__download_paper {paper_id: 2508.20722} -> converting
+- 2025-09-14T10:44Z arxiv__download_paper {check_status: true, paper_id: 2508.20722} -> success
+- 2025-09-14T10:44Z arxiv__read_paper {paper_id: 2508.20722} -> success (markdown loaded)
+- 2025-09-14T10:44Z rg README.md for arXiv ref -> found 2508.20722
+
+Context & Decisions:
+- Language/Env preference noted: Go 1.25.0 in broader project, but rStar repo likely Python-centric for training. Will avoid unrelated changes and keep additions modular (scripts/configs). No HTTP API edits expected yet.
+ - User approved SFT-first; acceptable to combine Unsloth with rStar infra later; domains starting with GSM8K then coding; max_seq_len exposed in YAML; target SFT+RL eventually; provide a single script to start rStar services via Docker Compose; best metric = lowest eval_loss; eval split configurable; JSONL format; QLoRA primary with optional RSLoRA; single-GPU only.
+
+Integrity & Backups:
+- A backup llm.state.bak will be created periodically after major milestones.
+
+Open Questions (to be refined after reading materials):
+- Dataset(s) selection and format? Desired max_seq_len and training objective specifics?
+- Target output format (CoT traces, tool-use traces, or pure text)?
+- Training schedule and eval metrics?
+
+Summary of rStar2-Agent (from README + paper 2508.20722):
+- Method: Agentic RL with Python tool-use in a secure Code Judge environment; multi-turn rollouts; prompt with <reason>/<answer> and function-call format for tools.
+- Algorithm: GRPO-RoC (Group Relative Policy Optimization + Resample-on-Correct). Oversample rollouts, downsample negatives uniformly, filter positives by tool-error ratio and format violations to prefer higher quality successes. Answer-only rewards to avoid reward hacking. Clip-Higher (epsilon_high=0.28), no KL, no entropy bonus.
+- Infra: VERL-based RL with SGLang/VLLM for inference; isolated high-throughput code execution service via Redis + async workers; dynamic load-balanced rollout scheduler.
+- Recipe: Non-reasoning SFT (instruction following + tool format) then 3 RL stages with max response lengths 8K→12K→12K and difficulty filtering in stage 3. Batch ~512 prompts; oversample 32, select 16 via RoC; T turns 10/10/15; LR 1e-6 AdamW.
+- Results: 14B model reaches 80.6% AIME24, 69.8% AIME25 in 510 RL steps; shorter responses vs baselines. Lessons: keep truncated rollouts as negative; avoid overly complex intermediate penalties.
+
+Implications for Gemma-3-12B-IT + Unsloth:
+
+Clarifying Questions for User Approval:
+Answered by user:
+- SFT-first now; later full-fledged tool-caller coder.
+- Combine Unsloth with rStar infra acceptable; 32GB constraint acknowledged; can drop to 7B if needed.
+- Start with GSM8K (math), later coding; split eval from train.
+- Expose max_seq_len and all knobs via YAML.
+- Prefer SFT + RL overall.
+- Provide single script to start services; assume Docker & Compose.
+- Best metric: lowest eval_loss.
+- Eval split ratio configurable in YAML.
+- JSONL inputs with keys configurable.
+- QLoRA primary; allow RSLoRA switch if compatible.
+- Single-GPU only.
+- 2025-09-14T10:55Z apply_patch add configs/sft_unsloth.yaml -> success
+- 2025-09-14T10:56Z apply_patch add unsloth_sft/preprocess.py -> success
+- 2025-09-14T10:58Z apply_patch add unsloth_sft/train_sft.py -> success
+- 2025-09-14T11:00Z apply_patch add scripts/start_rstar_services.sh -> success
+- 2025-09-14T11:01Z apply_patch add docker-compose.rstar.yml -> success
+
+- Unsloth excels at memory-efficient SFT/LoRA and some preference/GRPO variants in TRL-style loops, but does not natively provide multi-turn agentic RL with external tool environments at the scale of VERL. For RTX 5090 32GB, full agentic RL rollout with tool server will need aggressive downsizing (smaller group sizes, shorter lengths, fewer turns, 4-bit QLoRA, LoRA adapters, low micro-batches).
+- A pragmatic approach is: (1) Perform the non-reasoning SFT using Unsloth with full VRAM optimizations; (2) If RL is desired, implement a pared-down GRPO-RoC loop leveraging Unsloth/TRL components for policy + reference models, and integrate tool calls via a lightweight local code runner or the provided Code Judge but at reduced concurrency. Expose checkpoints/eval/caching features as requested.

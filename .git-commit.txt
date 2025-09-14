@@ -1,0 +1,44 @@
+feat: Unsloth SFT pipeline, service launcher, GPU sanity, and training docs
+
+Summary
+- Added a single‑GPU, 32GB‑friendly Unsloth SFT pipeline for Gemma 3 with QLoRA/RSLoRA knobs, robust preprocessing, and trainer QoL.
+- Added Docker Compose stack and scripts for rStar tool infra (Redis, Code Judge, vLLM), with strong env validation and GPU configuration.
+- Diagnosed and fixed NVML-in-container (libnvidia-ml) issues; added a GPU sanity script and documentation.
+- Improved example client to support remote OpenAI-compatible endpoints and Code Judge host/port flags.
+- Added TRAINING.md with setup, usage, and troubleshooting, including OpenRouter judge configuration.
+
+Key changes
+1) Unsloth SFT
+- configs/sft_unsloth.yaml: Model, QLoRA/RSLoRA, preprocessing (drop > max_seq_len, multi-worker, caching), training (checkpoints/eval cadence/best-by eval_loss), dataloader controls, optimizer settings, optional env for LLM-as-a-judge, local model support, evaluation split.
+- unsloth_sft/preprocess.py: JSONL -> formatted text -> tokenized datasets (train/val) with strict filtering; multi-process; cache save.
+- unsloth_sft/train_sft.py: Loads cached dataset (auto-runs pretokenizer if pretokenize: true), Unsloth FastLanguageModel load in 4-bit with device_map and conservative max_memory; Trainer with checkpoint/eval cadence; robust collator (no truncation warnings); processing_class to avoid tokenizer deprecation; PYTORCH_CUDA_ALLOC_CONF to reduce fragmentation; respects eval strategy across HF versions; supports num_train_epochs.
+- unsloth_sft/__init__.py to enable package imports.
+
+2) rStar services (tool infra)
+- docker-compose.rstar.yml: Redis, Code Judge API + workers, vLLM (OpenAI server). Set gpus: all; add NVIDIA env. Switched vLLM entrypoint to OpenAI API with flags, set max-model-len 8192 and gpu-memory-utilization 0.9.
+- scripts/start_rstar_services.sh: Creates .env.rstar if missing; validates required vars (MODEL_PATH, VLLM_* etc.); checks MODEL_PATH exists; fail-fast with hints.
+- TRAINING.md: Service startup guide, .env.rstar checklist, GPU troubleshooting, sanity script usage, Judge Setup Examples (local, remote host, OpenRouter), LLM-as-a-judge env config.
+
+3) GPU sanity and NVML fix
+- scripts/gpu_sanity.sh: Checks host driver, /dev/nvidia*, NVML library (detects CUDA stub), Docker default runtime, and runs CUDA test container. Hints for remediation.
+- TRAINING.md: Added remediation to prefer /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1 over CUDA stub.
+
+4) Example client improvements
+- examples/chat_with_tool_call.py: Added --base_url, --api_key, --remote_model; added --judge_host/--judge_port; uses headers when api_key provided.
+
+5) Docs
+- TRAINING.md: End-to-end SFT steps, dataset schema, pretokenization/cache, Unsloth trainer usage, rStar services, GPU troubleshooting, OpenRouter usage, and Quick Sanity Script section.
+
+6) Misc
+- .gitignore: Ensures caches, outputs, datasets, models, and env files are ignored (keeping repo clean).
+- llm.state: State tracking with plan, logs, and Q&A for this task run.
+
+Validation
+- vLLM container now starts and serves /v1/models for local Gemma 3 with max_model_len=8192.
+- GPU sanity passes (container nvidia-smi OK) after NVML fix.
+- Preprocessor and trainer run from the project venv; auto-pretokenization works; robust collation avoids pad()/length errors; training stepped with Unsloth logs.
+
+Notes
+- Submodules (code-judge, verl) remain referenced; compose builds code-judge images locally.
+- To avoid VRAM contention during SFT, stop vLLM before training.
+- For OpenRouter LLM-as-a-judge, set env in YAML (env:) or shell; Code Judge never needs OpenRouter config.
