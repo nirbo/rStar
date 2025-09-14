@@ -15,3 +15,6 @@ pip install -e code-judge
 
 # install rstar2_agent
 pip install -e .
+
+# Install rich library
+pip install rich

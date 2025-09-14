@@ -37,7 +37,16 @@ from transformers import (
     Trainer,  # trainer
     DataCollatorForLanguageModeling,  # data collator for causal LM
     AutoModelForCausalLM,  # fallback model loader
+    TrainerCallback,
 )
+from typing import Optional
+
+try:
+    from rich.console import Console
+    from rich.text import Text
+    _HAS_RICH = True
+except Exception:
+    _HAS_RICH = False
 
 try:  # LoRA via PEFT
     from peft import LoraConfig, get_peft_model  # peft helpers
@@ -161,6 +170,49 @@ def _load_model_and_tokenizer(cfg: Dict[str, Any]):
         model.gradient_checkpointing_enable()  # enable
 
     return model, tokenizer  # return loaded model and tokenizer
+
+
+class RichLogCallback(TrainerCallback):
+    """Pretty-print training logs with colorblind-friendly value colors."""
+    def __init__(self):
+        self.console: Optional[Console] = Console(force_jupyter=False) if _HAS_RICH else None
+        # value colors (non-bold): loss, grad_norm, learning_rate, epoch
+        self.colors = {
+            "loss": "cyan",
+            "grad_norm": "green3",
+            "learning_rate": "orange3",
+            "epoch": "magenta",
+        }
+
+    @staticmethod
+    def _fmt_lr(lr: float) -> str:
+        # Force non-scientific decimal, reasonable precision, strip trailing zeros
+        s = f"{float(lr):.10f}".rstrip("0").rstrip(".")
+        return s if s else "0"
+
+    def on_log(self, args, state, control, logs=None, **kwargs):  # type: ignore[override]
+        if not logs or self.console is None:
+            return
+        parts: list[Text] = []
+        for k in ("loss", "grad_norm", "learning_rate", "epoch"):
+            if k in logs:
+                val = logs[k]
+                if k == "learning_rate":
+                    try:
+                        val = self._fmt_lr(float(val))
+                    except Exception:
+                        val = str(val)
+                else:
+                    try:
+                        val = f"{float(val):.4f}"
+                    except Exception:
+                        val = str(val)
+                parts.append(Text(f"{k}: "))
+                parts.append(Text(str(val), style=self.colors.get(k, "white")))
+                parts.append(Text("  "))
+        if parts:
+            msg = Text().join(parts)
+            self.console.print(msg)
 
 
 def main(config_path: str = "configs/sft_unsloth.yaml") -> None:
@@ -304,6 +356,7 @@ def main(config_path: str = "configs/sft_unsloth.yaml") -> None:
         eval_dataset=ds["validation"],  # val split
         processing_class=collate_tokenizer,  # future-proof vs tokenizer deprecation
         data_collator=collator,  # collator
+        callbacks=[RichLogCallback()] if _HAS_RICH else None,
     )
 
     # Train
