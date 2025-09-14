@@ -37,7 +37,7 @@ data:
 
 training:
   output_dir: outputs/sft_gemma3_12b_it
-  per_device_train_batch_size: 16
+  per_device_train_batch_size: 12
   per_device_eval_batch_size: 12
   gradient_accumulation_steps: 4
   max_steps: 10000

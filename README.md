@@ -179,6 +179,96 @@ A comprehensive reinforcement learning training framework for the rStar2-Agent, 
 
 Please view [Installation](#Installation) and [Code Judge Server Setup](#Code-Judge-Server-Setup).
 
+## Unsloth SFT (Single‑GPU, 32GB‑friendly)
+
+This repository includes an Unsloth‑based SFT pipeline that is optimized for a single 32 GB GPU (e.g., RTX 5090) using QLoRA and efficient kernels. It supports very large datasets (e.g., MetaMathQA) and exposes controls for caching, JSON→JSONL conversion, batch/accumulation, optimizers, and dataloader tuning.
+
+Key files
+- `configs/sft_unsloth.yaml` – all knobs for model, data, training, runtime, and optional env vars
+- `unsloth_sft/preprocess.py` – JSONL → tokenized HF `DatasetDict` cache with strict length filtering
+- `unsloth_sft/train_sft.py` – Unsloth SFT runner; auto‑pretokenizes; auto‑resumes from latest checkpoint
+- `scripts/json_to_jsonl.py` – helper to convert JSON arrays/dicts into JSONL
+
+Highlights
+- QLoRA 4‑bit by default; RSLoRA optional
+- Gradient checkpointing: `true` (HF), `false`, or `"unsloth"` (Unsloth optimized)
+- Pretokenization cache on disk; drops samples longer than `data.max_seq_len` to avoid truncation training
+- Optional JSON→JSONL pre‑conversion controlled by YAML (no manual step required)
+- Robust collator with dynamic padding per batch; batching can be further stabilized via length bucketing
+- Trainer auto‑resumes from the latest checkpoint in `training.output_dir`
+
+### Configure
+
+Edit `configs/sft_unsloth.yaml`:
+
+- Model
+  - `model_name_or_path`: local path or HF repo id (local path supported)
+  - `load_in_4bit: true` (QLoRA); `rslora: false|true`
+  - `gradient_checkpointing: true|false|"unsloth"`
+  - `target_modules`: LoRA target projection names
+
+- Data
+  - `train_jsonl_path`: path to JSONL or JSON
+  - `input_key`, `target_key`: e.g., `query`/`response` for MetaMathQA
+  - `max_seq_len`: guardrail; we drop longer samples
+  - `dataset_cache_dir`: where tokenized dataset is written
+  - `pretokenize: true`: runs tokenizer pipeline once and caches
+  - `convert_to_jsonl: false|true`: if true and source is JSON array/dict, convert to JSONL before tokenization
+    - `convert_to_jsonl_include_keys`: optional whitelist (e.g., `[query, response]`)
+    - `convert_to_jsonl_renames`: optional mapping (e.g., `{query: problem, response: answer}`)
+
+- Training
+  - Typical stable setting on a 5090 for math data: `per_device_train_batch_size: 20`, `gradient_accumulation_steps: 3`
+  - `dataloader_drop_last: true` recommended for stability
+  - `disable_tqdm: false`, `logging_strategy: steps` keep the progress bar and step logs
+  - `save_steps`, `eval_steps`, `save_total_limit`: cadence and retention
+  - Optimizer: `optim: adamw_bnb_8bit` (QLoRA‑friendly), betas/epsilon, `max_grad_norm`
+
+### Run
+
+If the cache is missing and `pretokenize: true`, the trainer will run the pretokenizer automatically before training.
+
+```bash
+python unsloth_sft/train_sft.py --config configs/sft_unsloth.yaml
+```
+
+Notes
+- The trainer prints the effective total batch = `per_device_train_batch_size × gradient_accumulation_steps × num_gpus`.
+- Training auto‑resumes from the latest checkpoint in `training.output_dir`.
+- For long runs, consider `num_train_epochs: 1.0` (≈ one pass) or ~10k steps for ~385k samples at global batch ~36–60.
+
+### JSON→JSONL Conversion (Optional)
+
+If you point `data.train_jsonl_path` to a JSON file that is a list of objects (or a dict with a single list of objects), set `data.convert_to_jsonl: true` to convert it before tokenization. Optional knobs allow filtering keys and renaming fields to match `input_key`/`target_key`. A helper script is also available:
+
+```bash
+python scripts/json_to_jsonl.py \
+  --input datasets/metamathqa.json \
+  --output datasets/metamathqa.jsonl \
+  --include-keys query response \
+  --rename query=question --rename response=answer
+```
+
+### GPU Sanity and Services
+
+- `scripts/gpu_sanity.sh` checks host driver, NVML library, Docker GPU runtime, and runs a CUDA test container.
+- `scripts/start_rstar_services.sh` launches Redis, Code Judge, and vLLM via Compose; validates `.env.rstar` (MODEL_PATH, ports, etc.).
+
+vLLM via Compose runs the OpenAI API server and is invoked with flags:
+
+```yaml
+command: >-
+  --model ${MODEL_PATH}
+  --host ${VLLM_HOST}
+  --port ${VLLM_PORT}
+  --max-model-len 8192
+  --gpu-memory-utilization 0.9
+  --enable-auto-tool-choice
+  --tool-call-parser hermes
+```
+
+The example client `examples/chat_with_tool_call.py` supports `--base_url/--api_key/--remote_model` and `--judge_host/--judge_port` so you can target local vLLM or remote OpenAI‑compatible endpoints.
+
 ### Data Preparation
 
 This example uses:
