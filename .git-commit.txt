@@ -1,16 +1,10 @@
-feat(eval): add reporting tool for CSV summaries and comparisons
+docs: document LoRA merge, MATH-500 evaluation, and reporting in README
 
-- Add scripts/report_eval.py
-  - Summarizes overall accuracy and per-subject/level metrics for one or more CSVs
-  - Compares two CSVs head-to-head (delta counts, per-level/subject deltas, example diffs)
-  - Optional JSON/Markdown export for dashboards
-- Update llm.state with addition and usage notes
+- README.md
+  - Add references to new utilities: unsloth_sft/merge_lora.py, scripts/eval_math500.py, scripts/report_eval.py
+  - LoRA Merge section: auto-merge via YAML flags and manual merge command
+  - Evaluation section: commands for merged vs adapter, chat-template prompting, optional sampling
+  - Reporting section: summarize and compare CSVs; JSON/Markdown export
+- llm.state: log documentation update
 
-Usage examples
-- Summarize both CSVs:
-  python scripts/report_eval.py \
-    --csv outputs/eval/math500_merged_chat.csv outputs/eval/math500_adapter_chat.csv
-- Compare adapter vs merged:
-  python scripts/report_eval.py \
-    --compare outputs/eval/math500_merged_chat.csv outputs/eval/math500_adapter_chat.csv \
-    --out_json outputs/eval/report_math500.json --out_md outputs/eval/report_math500.md
+This aligns README with the new training/eval workflow and scripts.

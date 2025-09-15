@@ -188,6 +188,9 @@ Key files
 - `unsloth_sft/preprocess.py` – JSONL → tokenized HF `DatasetDict` cache with strict length filtering
 - `unsloth_sft/train_sft.py` – Unsloth SFT runner; auto‑pretokenizes; auto‑resumes from latest checkpoint
 - `scripts/json_to_jsonl.py` – helper to convert JSON arrays/dicts into JSONL
+ - `unsloth_sft/merge_lora.py` – merge a trained LoRA adapter into base weights (standalone HF model)
+ - `scripts/eval_math500.py` – evaluate merged or adapter model on MATH‑500
+ - `scripts/report_eval.py` – summarize/compare evaluation CSVs (overall, by subject/level)
 
 Highlights
 - QLoRA 4‑bit by default; RSLoRA optional
@@ -248,6 +251,90 @@ python scripts/json_to_jsonl.py \
   --include-keys query response \
   --rename query=question --rename response=answer
 ```
+
+### LoRA Merge (Optional, Post‑Training)
+
+You can optionally merge your trained LoRA/QLoRA adapter back into the base weights to produce a standalone model directory suitable for vLLM/HF serving.
+
+- Enable auto‑merge after training in the SFT config:
+
+```yaml
+training:
+  merge_lora_adapter: true
+  merge_output_dir: outputs/sft_gemma3_12b_it_merged  # destination
+  merge_dtype: bfloat16                                # bfloat16|float16|float32
+  merge_device: auto                                   # auto|cuda|cpu
+```
+
+- Or merge manually anytime:
+
+```bash
+python unsloth_sft/merge_lora.py \
+  --base_model_path models/gemma-3-12b-it \
+  --adapter_dir outputs/sft_gemma3_12b_it \
+  --output_dir outputs/sft_gemma3_12b_it_merged \
+  --dtype bfloat16 --device auto
+```
+
+Notes
+- Merging loads the full base (not 4/8‑bit). Ensure sufficient GPU/CPU RAM.
+- The script also saves tokenizer and generation_config alongside the merged weights.
+
+### Evaluation (MATH‑500)
+
+Evaluate either a merged model directory or the base + adapter directly. The dataset lives at `datasets/MATH-500/test.jsonl`.
+
+- Greedy, chat‑template prompting (recommended for instruct models):
+
+```bash
+SYS="You are a math assistant. Provide only the final answer inside \\boxed{...}."
+
+# Merged weights
+python scripts/eval_math500.py \
+  --model outputs/sft_gemma3_12b_it_merged \
+  --use_chat_template --system_prompt "$SYS" \
+  --limit 150 --batch_size 4 \
+  --out_csv outputs/eval/math500_merged_chat.csv
+
+# Base + adapter (no merge)
+python scripts/eval_math500.py \
+  --model models/gemma-3-12b-it \
+  --adapter outputs/sft_gemma3_12b_it \
+  --use_chat_template --system_prompt "$SYS" \
+  --limit 150 --batch_size 4 \
+  --out_csv outputs/eval/math500_adapter_chat.csv
+```
+
+- Optional mild sampling variants:
+
+```bash
+python scripts/eval_math500.py \
+  --model outputs/sft_gemma3_12b_it_merged \
+  --use_chat_template --system_prompt "$SYS" \
+  --temperature 0.2 --top_p 0.9 \
+  --limit 150 --batch_size 4 \
+  --out_csv outputs/eval/math500_merged_chat_samp.csv
+```
+
+The script writes a CSV with columns: `idx,unique_id,subject,level,score,gt,response` and prints a summary dict.
+
+### Automated Reporting
+
+Summarize CSVs and compare two runs (e.g., adapter vs merged):
+
+```bash
+# Per‑file summaries
+python scripts/report_eval.py \
+  --csv outputs/eval/math500_merged_chat.csv outputs/eval/math500_adapter_chat.csv
+
+# Head‑to‑head comparison + export JSON/Markdown
+python scripts/report_eval.py \
+  --compare outputs/eval/math500_merged_chat.csv outputs/eval/math500_adapter_chat.csv \
+  --out_json outputs/eval/report_math500.json \
+  --out_md outputs/eval/report_math500.md
+```
+
+Reports include overall accuracy, by‑subject and by‑level breakdowns, and delta counts (improve/regress/tie) with example cases.
 
 ### GPU Sanity and Services
 
