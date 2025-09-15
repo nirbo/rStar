@@ -70,6 +70,11 @@ training:
   adam_beta2: 0.999
   adam_epsilon: 1.0e-8
   max_grad_norm: 1.0
+  # LoRA merge settings (post-training)
+  merge_lora_adapter: false                            # if true, merge adapter into base at end of training
+  merge_output_dir: outputs/sft_gemma3_12b_it_merged   # where to save merged model
+  merge_dtype: bfloat16                                 # merge dtype: bfloat16|float16|float32
+  merge_device: auto                                    # merge device: auto|cuda|cpu
 
 runtime:
   torch_compile: false

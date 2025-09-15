@@ -468,6 +468,42 @@ def main(config_path: str = "configs/sft_unsloth.yaml") -> None:
     # Save final adapter checkpoint (best model is already loaded if configured)
     trainer.save_model(cfg["training"]["output_dir"])  # persist model
 
+    # Optionally merge LoRA adapter into base weights if configured
+    try:  # protect merge with robust error capture
+        merge_flag = bool(cfg["training"].get("merge_lora_adapter", False))  # read flag
+    except Exception:
+        merge_flag = False  # default to no-merge on config access issues
+
+    if merge_flag:  # run merge when requested
+        try:
+            from unsloth_sft.merge_lora import merge_lora_adapter  # import merger
+        except Exception as e:
+            print(f"[merge] Failed to import merge_lora_adapter: {e}")  # log import failure
+            merge_lora_adapter = None  # type: ignore
+
+        if merge_lora_adapter is not None:  # proceed only if available
+            model_base = str(cfg["model"]["model_name_or_path"])  # base model path
+            adapter_dir = str(cfg["training"]["output_dir"])  # trained adapter dir
+            # derive output path and optional knobs
+            merge_out = str(cfg["training"].get("merge_output_dir", f"{adapter_dir}_merged"))  # output dir
+            merge_dtype = str(cfg["training"].get("merge_dtype", "bfloat16"))  # dtype
+            merge_device = str(cfg["training"].get("merge_device", "auto"))  # device hint
+            try:
+                print(
+                    f"[merge] Merging adapter '{adapter_dir}' into base '{model_base}' -> '{merge_out}' "
+                    f"(dtype={merge_dtype}, device={merge_device})"
+                )  # announce merge
+                merge_lora_adapter(
+                    base_model_path=model_base,  # base
+                    adapter_dir=adapter_dir,  # adapter
+                    output_dir=merge_out,  # destination
+                    dtype=merge_dtype,  # dtype
+                    device=merge_device,  # device
+                )  # perform merge
+                print(f"[merge] Saved merged model to: {merge_out}")  # success log
+            except Exception as e:  # capture merge exceptions
+                print(f"[merge] Merge failed: {e}")  # detailed failure log
+
 
 if __name__ == "__main__":  # CLI entry
     import argparse  # parse args

@@ -1,9 +1,24 @@
-feat: support Unsloth gradient checkpointing mode
+feat(sft): add LoRA merge utility and wire optional post-training merge via config
 
-- unsloth_sft/train_sft.py:
-  - Accept `model.gradient_checkpointing` config as:
-    - true/false: standard HF gradient checkpointing on/off
-    - "unsloth": pass through to FastLanguageModel.from_pretrained(use_gradient_checkpointing="unsloth") for Unsloth’s optimized GC.
-  - Avoid double-enabling: skip manual model.gradient_checkpointing_enable() when using Unsloth mode.
+- Add unsloth_sft/merge_lora.py
+  - CLI + API to merge PEFT LoRA adapter into base HF weights
+  - Saves tokenizer and generation_config alongside merged weights
+  - Supports dtype/device selection and safe serialization
+- Update unsloth_sft/train_sft.py
+  - After trainer.save_model, conditionally merge when training.merge_lora_adapter=true
+  - Reads base from model.model_name_or_path; adapter from training.output_dir
+  - Outputs to training.merge_output_dir (configurable), with merge_dtype/merge_device controls
+  - Robust exception handling + clear logs for import/merge failures
+- Update configs/sft_unsloth.yaml
+  - Add training.merge_lora_adapter, merge_output_dir, merge_dtype, merge_device with sane defaults
 
-This allows using Unsloth’s custom checkpointing behavior when requested in YAML.
+Operational notes
+- Manual one-off merge executed:
+  python unsloth_sft/merge_lora.py \
+    --base_model_path models/gemma-3-12b-it \
+    --adapter_dir outputs/sft_gemma3_12b_it \
+    --output_dir outputs/sft_gemma3_12b_it_merged \
+    --dtype bfloat16 --device auto
+- Result: merged model saved under outputs/sft_gemma3_12b_it_merged (sharded safetensors)
+
+No changes to submodule contents intended; keeping commit scope to sft files + config + statefile.
