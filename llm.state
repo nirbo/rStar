@@ -42,3 +42,7 @@ Next steps:
 [log 2025-09-15T16:50:02.085301Z] Eval script enhancement:
 - scripts/eval_math500.py: added --use_chat_template and --system_prompt to evaluate with tokenizer.apply_chat_template.
 - In chat mode, constructs [system, user] messages and sets add_generation_prompt=True.
+
+[log 2025-09-15T17:11:01.515841Z] Added automated reporting:
+- scripts/report_eval.py summarizes per-CSV results and compares two CSVs (overall, by subject/level, deltas, examples).
+- Supports JSON/Markdown export for dashboards.
