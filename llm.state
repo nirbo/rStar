@@ -26,3 +26,11 @@ Next steps:
 - Enable merge by setting training.merge_lora_adapter: true in configs/sft_unsloth.yaml.
 - Re-run training tail or call merger directly:
   python unsloth_sft/merge_lora.py --base_model_path models/gemma-3-12b-it     --adapter_dir outputs/sft_gemma3_12b_it --output_dir outputs/sft_gemma3_12b_it_merged     --dtype bfloat16 --device auto
+
+[log 2025-09-15T16:07:14.106436Z] Manual merge executed:
+- Ran merge_lora.py with base=models/gemma-3-12b-it, adapter=outputs/sft_gemma3_12b_it
+- Output merged model at outputs/sft_gemma3_12b_it_merged (sharded safetensors present)
+
+[log 2025-09-15T16:07:14.106450Z] Added MATH-500 eval script:
+- scripts/eval_math500.py evaluates merged or adapter model on datasets/MATH-500/test.jsonl
+- Uses VERL math normalization for EM scoring, writes CSV and prints summary
