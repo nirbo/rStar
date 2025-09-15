@@ -1,10 +1,8 @@
-chore(eval,merge): silence deprecations and generation warnings
+feat(eval): add chat-template prompting to MATH-500 eval
 
 - scripts/eval_math500.py
-  - Switch HF load to `dtype=` (from deprecated `torch_dtype`)
-  - Only pass sampling flags when do_sample=True (avoid warnings in greedy mode)
-  - Slice responses using per-sample prompt length via attention_mask sum
-- unsloth_sft/merge_lora.py
-  - Switch HF load to `dtype=` per new API
+  - New flags: --use_chat_template, --system_prompt
+  - Chat mode builds [system, user] messages and tokenizes via tokenizer.apply_chat_template with add_generation_prompt
+  - Retains plain prompt mode as default; both use attention_mask-based slicing
 
-Minor quality-of-life improvements; functionality unchanged.
+This enables fair evaluation of chat-instruct models like Gemma-3-Instruct.

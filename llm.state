@@ -38,3 +38,7 @@ Next steps:
 [log 2025-09-15T16:30:45.840677Z] Eval + merge tweaks:
 - scripts/eval_math500.py: use `dtype` instead of deprecated `torch_dtype`; avoid passing sampling kwargs when do_sample=False; fix prompt length slicing via attention_mask.
 - unsloth_sft/merge_lora.py: use `dtype` instead of deprecated `torch_dtype` when loading base for merge.
+
+[log 2025-09-15T16:50:02.085301Z] Eval script enhancement:
+- scripts/eval_math500.py: added --use_chat_template and --system_prompt to evaluate with tokenizer.apply_chat_template.
+- In chat mode, constructs [system, user] messages and sets add_generation_prompt=True.

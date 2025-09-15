@@ -93,7 +93,7 @@ def normalize_math_and_score(  # compute EM score via VERL normalization
         return 0
 
 
-def _build_prompt(problem: str) -> str:  # build a concise instruction prompt
+def _build_prompt(problem: str) -> str:  # build a concise instruction prompt (plain mode)
     return (
         "Solve the problem. Provide only the final answer in \\boxed{...}.\n\n"
         + problem.strip()
@@ -113,6 +113,8 @@ def run_eval(  # main evaluation loop
     dtype: str = "bfloat16",  # dtype for loading
     device: str = "auto",  # device mapping strategy
     out_csv: Optional[str] = None,  # optional CSV output path
+    use_chat_template: bool = False,  # format prompts via tokenizer chat template
+    system_prompt: Optional[str] = None,  # optional system message when chat template is used
 ) -> Tuple[float, int]:
     # Load model/tokenizer once
     model, tok = load_model_tokenizer(model_path, adapter_dir=adapter_dir, dtype=dtype, device=device)
@@ -139,8 +141,26 @@ def run_eval(  # main evaluation loop
     # Evaluate sequentially in micro-batches (safe and simple)
     for i in range(0, total, batch_size):
         batch = rows[i : i + batch_size]
-        prompts = [_build_prompt(r.get("problem", "")) for r in batch]
-        enc = tok(prompts, return_tensors="pt", padding=True).to(model.device)
+        if use_chat_template:
+            chats = []
+            sys_msg = system_prompt or "You are a math assistant. Provide only the final answer inside \\boxed{...}."
+            for r in batch:
+                prob = r.get("problem", "").strip()
+                chats.append([
+                    {"role": "system", "content": sys_msg},
+                    {"role": "user", "content": prob},
+                ])
+            enc = tok.apply_chat_template(
+                chats,
+                add_generation_prompt=True,
+                padding=True,
+                return_tensors="pt",
+                return_dict=True,
+                tokenize=True,
+            ).to(model.device)
+        else:
+            prompts = [_build_prompt(r.get("problem", "")) for r in batch]
+            enc = tok(prompts, return_tensors="pt", padding=True).to(model.device)
 
         do_sample = bool(temperature > 0.0)
         # Only pass sampling-related kwargs when sampling is enabled to avoid warnings
@@ -189,6 +209,12 @@ def main() -> None:  # CLI entry
     p.add_argument("--dtype", default="bfloat16", choices=["bfloat16", "float16", "float32"], help="Load dtype")
     p.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"], help="Device mapping strategy")
     p.add_argument("--out_csv", default="outputs/eval/math500_eval.csv", help="Where to write per-sample results")
+    p.add_argument("--use_chat_template", action="store_true", help="Use tokenizer chat template for prompts")
+    p.add_argument(
+        "--system_prompt",
+        default=None,
+        help="Optional system prompt when using chat template (defaults to math answer instruction)",
+    )
     args = p.parse_args()
 
     run_eval(
@@ -202,6 +228,8 @@ def main() -> None:  # CLI entry
         dtype=args.dtype,
         device=args.device,
         out_csv=args.out_csv,
+        use_chat_template=args.use_chat_template,
+        system_prompt=args.system_prompt,
     )
 
 
