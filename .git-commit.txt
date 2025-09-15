@@ -1,19 +1,10 @@
-feat(eval): add MATH-500 evaluation script and log manual LoRA merge
+chore(eval,merge): silence deprecations and generation warnings
 
-- Add scripts/eval_math500.py
-  - Evaluates merged HF model or base+adapter on datasets/MATH-500/test.jsonl
-  - Greedy decoding by default; configurable batch size, tokens, sampling
-  - Uses VERL math normalization (last boxed answer, string normalization) for EM
-  - Writes per-sample CSV and prints summary statistics
-- Update llm.state
-  - Logged manual one-off merge outcome and evaluation script addition
+- scripts/eval_math500.py
+  - Switch HF load to `dtype=` (from deprecated `torch_dtype`)
+  - Only pass sampling flags when do_sample=True (avoid warnings in greedy mode)
+  - Slice responses using per-sample prompt length via attention_mask sum
+- unsloth_sft/merge_lora.py
+  - Switch HF load to `dtype=` per new API
 
-Usage examples
-- Evaluate merged weights:
-  python scripts/eval_math500.py \
-    --model outputs/sft_gemma3_12b_it_merged \
-    --limit 100 --batch_size 4 --out_csv outputs/eval/math500_merged.csv
-- Evaluate adapter without merge:
-  python scripts/eval_math500.py \
-    --model models/gemma-3-12b-it --adapter outputs/sft_gemma3_12b_it \
-    --limit 100 --batch_size 4 --out_csv outputs/eval/math500_adapter.csv
+Minor quality-of-life improvements; functionality unchanged.

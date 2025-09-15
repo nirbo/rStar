@@ -34,3 +34,7 @@ Next steps:
 [log 2025-09-15T16:07:14.106450Z] Added MATH-500 eval script:
 - scripts/eval_math500.py evaluates merged or adapter model on datasets/MATH-500/test.jsonl
 - Uses VERL math normalization for EM scoring, writes CSV and prints summary
+
+[log 2025-09-15T16:30:45.840677Z] Eval + merge tweaks:
+- scripts/eval_math500.py: use `dtype` instead of deprecated `torch_dtype`; avoid passing sampling kwargs when do_sample=False; fix prompt length slicing via attention_mask.
+- unsloth_sft/merge_lora.py: use `dtype` instead of deprecated `torch_dtype` when loading base for merge.

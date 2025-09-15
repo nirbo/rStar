@@ -64,7 +64,7 @@ def load_model_tokenizer(  # helper to load model/tokenizer
 
     model = AutoModelForCausalLM.from_pretrained(  # load base or merged model
         model_path,
-        torch_dtype=torch_dtype,
+        dtype=torch_dtype,  # use new `dtype` argument to avoid deprecation warning
         low_cpu_mem_usage=True,
         device_map=device_map,
     )
@@ -142,18 +142,21 @@ def run_eval(  # main evaluation loop
         prompts = [_build_prompt(r.get("problem", "")) for r in batch]
         enc = tok(prompts, return_tensors="pt", padding=True).to(model.device)
 
+        do_sample = bool(temperature > 0.0)
+        # Only pass sampling-related kwargs when sampling is enabled to avoid warnings
         gen_kwargs = dict(
             max_new_tokens=max_new_tokens,
-            do_sample=bool(temperature > 0.0),
-            temperature=temperature,
-            top_p=top_p,
+            do_sample=do_sample,
             eos_token_id=eos_id,
             pad_token_id=pad_id,
         )
+        if do_sample:
+            gen_kwargs.update(dict(temperature=temperature, top_p=top_p))
         out = model.generate(**enc, **gen_kwargs)
 
         for j, r in enumerate(batch):
-            prompt_len = enc["input_ids"][j].shape[0]
+            # For left-padded inputs, compute per-sample prompt length via attention_mask sum
+            prompt_len = int(enc["attention_mask"][j].sum().item())
             resp_ids = out[j][prompt_len:]
             text = tok.decode(resp_ids, skip_special_tokens=True)
             score = normalize_math_and_score(text, r.get("answer", ""))
@@ -204,4 +207,3 @@ def main() -> None:  # CLI entry
 
 if __name__ == "__main__":  # CLI guard
     main()  # execute
-

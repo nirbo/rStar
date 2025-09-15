@@ -79,7 +79,7 @@ def merge_lora_adapter(  # define the core merge function
 
     # Load base model in selected dtype; avoid 4/8-bit quantization for accurate merge
     base_kwargs = {  # kwargs for HF load
-        "torch_dtype": torch_dtype,
+        "dtype": torch_dtype,  # use new `dtype` per transformers deprecation notice
         "low_cpu_mem_usage": True,
         "device_map": device_map,
     }
@@ -142,4 +142,3 @@ def main() -> None:  # CLI entry point
 
 if __name__ == "__main__":  # CLI guard
     main()  # run CLI
-
